@@ -1,0 +1,26 @@
+[
+    {
+      "ParameterKey": "KeyName",
+      "ParameterValue": "CCMD-EUCOM-ThirdFleet-Eu-West-1-Training"
+    },
+    {
+        "ParameterKey": "VpcId",
+        "ParameterValue": "vpc-094d355b07883906c"
+    },
+    {
+        "ParameterKey": "SubnetId",
+        "ParameterValue": "subnet-0af751c807e1fe2f9,subnet-013ee744214df5698,subnet-0f7165dbbf6c2cdc9"
+    },
+    {
+        "ParameterKey": "DesiredCapacity",
+        "ParameterValue": "1"
+    },
+    {
+        "ParameterKey": "MaxSize",
+        "ParameterValue": "2"
+    },
+    {
+      "ParameterKey": "InstanceType",
+      "ParameterValue": "t2.medium"
+    }
+]
