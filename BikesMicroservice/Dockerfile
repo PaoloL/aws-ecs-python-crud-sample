@@ -10,3 +10,4 @@ COPY src/webservice.py /src/
 RUN ~/.local/bin/pip3 install -r requirements.txt
 
 CMD ["python3", "webservice.py"]
+EXPOSE 8080

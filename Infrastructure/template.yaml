@@ -79,38 +79,44 @@ Resources:
   ECSCluster:
     Type: 'AWS::ECS::Cluster'
   
-  EcsSecurityGroup:
+  ClusterSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       GroupDescription: ECS Security Group
       VpcId: !Ref VpcId
   
-  EcsSecurityGroupHTTPinbound:
+  ALBSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: ALB Security Group
+      VpcId: !Ref VpcId
+  
+  ALBSecurityGroupHTTPinbound:
     Type: 'AWS::EC2::SecurityGroupIngress'
     Properties:
-      GroupId: !Ref EcsSecurityGroup
+      GroupId: !Ref ALBSecurityGroup
       IpProtocol: tcp
-      FromPort: 8080
-      ToPort: 8081
+      FromPort: 80
+      ToPort: 80
       CidrIp: 0.0.0.0/0
   
-  EcsSecurityGroupSSHinbound:
+  ClusterSecurityGroupSSHinbound:
     Type: 'AWS::EC2::SecurityGroupIngress'
     Properties:
-      GroupId: !Ref EcsSecurityGroup
+      GroupId: !Ref ClusterSecurityGroup
       IpProtocol: tcp
       FromPort: 22
       ToPort: 22
       CidrIp: 0.0.0.0/0
   
-  EcsSecurityGroupALBports:
+  ClusterSecurityGroupALBports:
     Type: 'AWS::EC2::SecurityGroupIngress'
     Properties:
-      GroupId: !Ref EcsSecurityGroup
+      GroupId: !Ref ClusterSecurityGroup
       IpProtocol: tcp
-      FromPort: 80
-      ToPort: 80
-      SourceSecurityGroupId: !Ref EcsSecurityGroup
+      FromPort: 0
+      ToPort: 65535
+      SourceSecurityGroupId: !Ref ALBSecurityGroup
   
   CloudwatchLogsGroup:
     Type: 'AWS::Logs::LogGroup'
@@ -141,7 +147,7 @@ Resources:
               awslogs-region: !Ref 'AWS::Region'
               awslogs-stream-prefix: ecs-demo-app
           PortMappings:
-            - ContainerPort: 5000
+            - ContainerPort: 8080
   
   BikesTaskDefinition:
     Type: 'AWS::ECS::TaskDefinition'
@@ -163,9 +169,9 @@ Resources:
               awslogs-region: !Ref 'AWS::Region'
               awslogs-stream-prefix: ecs-demo-app
           PortMappings:
-            - ContainerPort: 5000
+            - ContainerPort: 8080
   
-  ECSALB:
+  ALB:
     Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
     Properties:
       Name: ECSALB
@@ -175,7 +181,7 @@ Resources:
           Value: '30'
       Subnets: !Ref SubnetId
       SecurityGroups:
-        - !Ref EcsSecurityGroup
+        - !Ref ALBSecurityGroup
   
   ALBListener:
     Type: 'AWS::ElasticLoadBalancingV2::Listener'
@@ -187,7 +193,7 @@ Resources:
             ContentType: "text/plain"
             MessageBody: "Please go to /bikes or /cars"
             StatusCode: "200"
-      LoadBalancerArn: !Ref ECSALB
+      LoadBalancerArn: !Ref ALB
       Port: 80
       Protocol: HTTP
   
@@ -221,7 +227,7 @@ Resources:
   
   ECSCarsServiceTargetGroup:
     Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
-    DependsOn: ECSALB
+    DependsOn: ALB
     Properties:
       HealthCheckIntervalSeconds: 10
       HealthCheckPath: /cars
@@ -229,14 +235,14 @@ Resources:
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
       Name: ECSCarsServiceTargetGroup
-      Port: 5000
+      Port: 80
       Protocol: HTTP
       UnhealthyThresholdCount: 2
       VpcId: !Ref VpcId
   
   ECSBikesServiceTargetGroup:
     Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
-    DependsOn: ECSALB
+    DependsOn: ALB
     Properties:
       HealthCheckIntervalSeconds: 10
       HealthCheckPath: /bikes
@@ -244,7 +250,7 @@ Resources:
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
       Name: ECSBikesServiceTargetGroup
-      Port: 5000
+      Port: 80
       Protocol: HTTP
       UnhealthyThresholdCount: 2
       VpcId: !Ref VpcId
@@ -272,7 +278,7 @@ Resources:
         - !Ref 'AWS::Region'
         - AMIID
       SecurityGroups:
-        - !Ref EcsSecurityGroup
+        - !Ref ClusterSecurityGroup
       InstanceType: !Ref InstanceType
       IamInstanceProfile: !Ref EC2InstanceProfile
       KeyName: !Ref KeyName
@@ -297,25 +303,30 @@ Resources:
 
   BikeService:
     Type: 'AWS::ECS::Service'
-    DependsOn: ALBListenerRuleBikes
+    DependsOn: 
+      - ALBListenerRuleBikes
+      - ECSServiceRole
     Properties:
       Cluster: !Ref ECSCluster
       DesiredCount: 1
       LoadBalancers:
         - ContainerName: bikes-microservice
-          ContainerPort: '5000'
+          ContainerPort: 8080
           TargetGroupArn: !Ref ECSBikesServiceTargetGroup
       Role: !Ref ECSServiceRole
       TaskDefinition: !Ref BikesTaskDefinition
+  
   CarService:
     Type: 'AWS::ECS::Service'
-    DependsOn: ALBListenerRuleCars
+    DependsOn: 
+      - ALBListenerRuleCars
+      - ECSServiceRole
     Properties:
       Cluster: !Ref ECSCluster
       DesiredCount: 1
       LoadBalancers:
         - ContainerName: cars-microservice
-          ContainerPort: 5000
+          ContainerPort: 8080
           TargetGroupArn: !Ref ECSCarsServiceTargetGroup
       Role: !Ref ECSServiceRole
       TaskDefinition: !Ref CarsTaskDefinition
@@ -366,6 +377,7 @@ Resources:
         - Arn
       ScalableDimension: 'ecs:service:DesiredCount'
       ServiceNamespace: ecs
+  
   CarServiceScalingTarget:
     Type: 'AWS::ApplicationAutoScaling::ScalableTarget'
     DependsOn: CarService
@@ -399,6 +411,7 @@ Resources:
         StepAdjustments:
           - MetricIntervalLowerBound: 0
             ScalingAdjustment: 200
+ 
   CarServiceScalingPolicy:
     Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
     Properties:
@@ -428,10 +441,11 @@ Resources:
       Dimensions:
         - Name: LoadBalancer
           Value: !GetAtt 
-            - ECSALB
+            - ALB
             - LoadBalancerFullName
       ComparisonOperator: GreaterThanThreshold
       MetricName: HTTPCode_ELB_5XX_Count
+  
   EC2Role:
     Type: 'AWS::IAM::Role'
     Properties:
@@ -460,6 +474,7 @@ Resources:
                   - 'logs:CreateLogStream'
                   - 'logs:PutLogEvents'
                 Resource: '*'
+  
   AutoscalingRole:
     Type: 'AWS::IAM::Role'
     Properties:
@@ -484,6 +499,7 @@ Resources:
                   - 'ecs:DescribeServices'
                   - 'ecs:UpdateService'
                 Resource: '*'
+  
   EC2InstanceProfile:
     Type: 'AWS::IAM::InstanceProfile'
     Properties:
@@ -498,12 +514,12 @@ Outputs:
     Value: !Ref CarService
   ECSCluster:
     Value: !Ref ECSCluster
-  ECSALB:
+  ALB:
     Description: Your ALB DNS URL
     Value: !Join 
       - ''
       - - !GetAtt 
-          - ECSALB
+          - ALB
           - DNSName
   BikesTaskDef:
     Value: !Ref BikesTaskDefinition

@@ -41,6 +41,6 @@ class Cars(Resource):
 api.add_resource(Cars, '/cars')
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
+    app.run(host='0.0.0.0', port=8080)
     
 
